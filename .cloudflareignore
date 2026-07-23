@@ -1,0 +1,3 @@
+# Ignore large Webpack build cache directory in Cloudflare Pages
+.next/cache
+.next/cache/**
