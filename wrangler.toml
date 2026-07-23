@@ -1,6 +1,6 @@
 name = "sales-mtd-app"
-main = "workers/index.ts"
 compatibility_date = "2024-01-01"
+pages_build_output_dir = ".next"
 
 [[d1_databases]]
 binding = "DB"
@@ -11,6 +11,3 @@ migrations_dir = "migrations"
 [[r2_buckets]]
 binding = "R2_STORAGE"
 bucket_name = "sales-mtd-files"
-
-[site]
-bucket = "./.next/out"
