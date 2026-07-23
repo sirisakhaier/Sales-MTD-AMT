@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+.venv/
+
+# Next.js build output
+.next/
+out/
+
+# Local databases & storage
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+r2_storage/
+
+# System & OS
+.DS_Store
+*.log
+
+# Environment
+.env
+.env.local
