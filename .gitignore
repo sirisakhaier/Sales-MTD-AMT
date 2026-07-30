@@ -19,3 +19,4 @@ r2_storage/
 # Environment
 .env
 .env.local
+.github/workflows/
