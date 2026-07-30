@@ -1,9 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  webpack: (config) => {
-    config.cache = false;
-    return config;
+  output: 'export',
+  images: {
+    unoptimized: true
   },
   experimental: {
     serverComponentsExternalPackages: ['better-sqlite3']

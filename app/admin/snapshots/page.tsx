@@ -30,7 +30,7 @@ export default function AdminSnapshotsPage() {
     if (!confirm(`Are you sure you want to delete MTD Snapshot for ${mtdDate} (${filename})?\n\nThis will remove this snapshot's records without affecting other snapshot dates!`)) return;
 
     try {
-      const res = await fetch(`/api/snapshots/${id}?userEmail=admin@makro.co.th`, {
+      const res = await fetch(`/api/snapshots?id=${id}&userEmail=admin@makro.co.th`, {
         method: 'DELETE'
       });
       const data = await res.json();
