@@ -1,11 +1,16 @@
 name = "sales-mtd-app"
-compatibility_date = "2024-01-01"
-pages_build_output_dir = ".next"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+main = ".open-next/worker.js"
+
+[assets]
+directory = ".open-next/assets"
+binding = "ASSETS"
 
 [[d1_databases]]
 binding = "DB"
 database_name = "sales-mtd-db"
-database_id = "sales-mtd-db-id"
+database_id = "6d370b19-05f8-48cf-b842-4531e115697f"
 migrations_dir = "migrations"
 
 [[r2_buckets]]
