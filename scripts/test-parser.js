@@ -5,7 +5,7 @@ async function test() {
   const samplePath = path.join(process.cwd(), 'Data source', 'Sales by Item - Monthly - Amt_Sales by Item - Monthly - Amt 20260621.xls');
   const buffer = fs.readFileSync(samplePath);
   
-  const { parseMTDFile } = require('../lib/file-parser/parser');
+  const { parseMTDFile } = require('../lib/file-parser/parser.ts');
   console.log('Testing parser on:', path.basename(samplePath));
   const res = await parseMTDFile(buffer, path.basename(samplePath), '2026-06');
   console.log('Result:', {

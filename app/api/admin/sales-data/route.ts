@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import db from '@/lib/db';
+import { getDB, dbGet, dbAll, dbRun } from '@/lib/d1';
 
 export async function GET(request: Request) {
   try {
@@ -41,9 +41,10 @@ export async function GET(request: Request) {
 
     const whereString = whereClauses.length > 0 ? 'WHERE ' + whereClauses.join(' AND ') : '';
 
+    const db = await getDB();
     const countQuery = `SELECT COUNT(*) as total FROM sales_mtd_data ${whereString}`;
-    const totalRow = db.prepare(countQuery).get(...params) as { total: number };
-    const total = totalRow.total;
+    const totalRow = await dbGet<{ total: number }>(db, countQuery, ...params);
+    const total = totalRow?.total || 0;
 
     const dataQuery = `
       SELECT * FROM sales_mtd_data 
@@ -52,7 +53,7 @@ export async function GET(request: Request) {
       LIMIT ? OFFSET ?
     `;
 
-    const records = db.prepare(dataQuery).all(...params, limit, offset);
+    const records = await dbAll(db, dataQuery, ...params, limit, offset);
 
     return NextResponse.json({
       page,
@@ -76,13 +77,14 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'Record ID required' }, { status: 400 });
     }
 
-    db.prepare('DELETE FROM sales_mtd_data WHERE id = ?').run(id);
+    const db = await getDB();
+    await dbRun(db, 'DELETE FROM sales_mtd_data WHERE id = ?', id);
 
     const now = new Date().toISOString();
-    db.prepare(`
+    await dbRun(db, `
       INSERT INTO audit_logs (id, user_email, action, entity_type, entity_id, description, created_at)
       VALUES (?, ?, 'SALES_DATA_DELETED', 'SALES_MTD_DATA', ?, ?, ?)
-    `).run(`aud-${Date.now()}`, userEmail, id, `Deleted single sales data row ${id}`, now);
+    `, `aud-${Date.now()}`, userEmail, id, `Deleted single sales data row ${id}`, now);
 
     return NextResponse.json({ success: true });
   } catch (error: any) {

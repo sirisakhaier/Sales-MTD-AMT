@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import db from '@/lib/db';
+import { getDB, dbGet, dbRun } from '@/lib/d1';
 import { verifyPassword } from '@/lib/auth';
 
 export async function POST(request: Request) {
@@ -10,7 +10,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Username and password are required' }, { status: 400 });
     }
 
-    const user = db.prepare('SELECT * FROM users WHERE username = ? OR email = ?').get(username, username) as any;
+    const db = await getDB();
+    const user = await dbGet(db, 'SELECT * FROM users WHERE username = ? OR email = ?', username, username);
 
     if (!user) {
       return NextResponse.json({ error: 'Invalid username or password' }, { status: 401 });
@@ -25,25 +26,23 @@ export async function POST(request: Request) {
     }
 
     const now = new Date().toISOString();
-    db.prepare('UPDATE users SET last_login_at = ? WHERE id = ?').run(now, user.id);
-
-    db.prepare(`
-      INSERT INTO audit_logs (id, user_email, action, entity_type, entity_id, description, created_at)
-      VALUES (?, ?, 'USER_LOGIN', 'USER', ?, ?, ?)
-    `).run(`aud-${Date.now()}`, user.email, user.id, `User ${user.username} logged in successfully`, now);
-
-    const sanitizeUser = {
-      id: user.id,
-      username: user.username,
-      email: user.email,
-      full_name: user.full_name,
-      role: user.role,
-      is_active: user.is_active
-    };
+    await dbRun(db, 'UPDATE users SET last_login_at = ? WHERE id = ?', now, user.id);
+    await dbRun(db,
+      `INSERT INTO audit_logs (id, user_email, action, entity_type, entity_id, description, created_at)
+       VALUES (?, ?, 'USER_LOGIN', 'USER', ?, ?, ?)`,
+      `aud-${Date.now()}`, user.email, user.id, `User ${user.username} logged in successfully`, now
+    );
 
     return NextResponse.json({
       success: true,
-      user: sanitizeUser
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        full_name: user.full_name,
+        role: user.role,
+        is_active: user.is_active
+      }
     });
 
   } catch (error: any) {

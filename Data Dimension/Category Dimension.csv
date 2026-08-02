@@ -1,0 +1,7 @@
+CHK_CAT,CATEGORY_NAME,DEPARTMENT,MANAGER,REMARK
+WH,Water Heater,Home Appliance,Appliances Manager,Active
+AC,Air Conditioner,Home Appliance,Appliances Manager,Active
+REF,Refrigerator,Major Appliance,Cooling Manager,Active
+WM,Washing Machine,Major Appliance,Laundry Manager,Active
+TV,Television,Consumer Electronics,AV Manager,Active
+SDA,Small Domestic Appliances,Small Appliance,SDA Manager,Active

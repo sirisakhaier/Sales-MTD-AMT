@@ -1,11 +1,4 @@
-import fs from 'fs';
-import path from 'path';
-
-const STORAGE_DIR = path.join(process.cwd(), 'r2_storage');
-
-if (!fs.existsSync(STORAGE_DIR)) {
-  fs.mkdirSync(STORAGE_DIR, { recursive: true });
-}
+import { getCloudflareContext } from '@opennextjs/cloudflare';
 
 export async function saveFileToR2(
   buffer: Buffer,
@@ -15,16 +8,30 @@ export async function saveFileToR2(
   filename: string
 ): Promise<string> {
   const objectKey = `sales-mtd/${year}/${month}/${reportDateStr}/${filename}`;
-  const localFilePath = path.join(STORAGE_DIR, objectKey.replace(/\//g, '_'));
-
-  fs.writeFileSync(localFilePath, buffer);
+  try {
+    const ctx = getCloudflareContext();
+    const r2 = (ctx.env as any).R2_STORAGE;
+    if (r2 && typeof r2.put === 'function') {
+      await r2.put(objectKey, buffer);
+    }
+  } catch (e) {
+    console.warn('R2 Storage notice:', e);
+  }
   return objectKey;
 }
 
-export function getFileFromR2(objectKey: string): Buffer | null {
-  const localFilePath = path.join(STORAGE_DIR, objectKey.replace(/\//g, '_'));
-  if (fs.existsSync(localFilePath)) {
-    return fs.readFileSync(localFilePath);
+export async function getFileFromR2(objectKey: string): Promise<ArrayBuffer | null> {
+  try {
+    const ctx = getCloudflareContext();
+    const r2 = (ctx.env as any).R2_STORAGE;
+    if (r2 && typeof r2.get === 'function') {
+      const item = await r2.get(objectKey);
+      if (item) {
+        return await item.arrayBuffer();
+      }
+    }
+  } catch (e) {
+    console.warn('R2 get notice:', e);
   }
   return null;
 }

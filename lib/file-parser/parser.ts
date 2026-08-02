@@ -1,6 +1,14 @@
 import * as XLSX from 'xlsx';
-import crypto from 'crypto';
-import { loadStoreDimensions, loadModelDimensions } from '../dimension-loader';
+import { loadStoreDimensions, loadModelDimensions } from '../dimension-loader.ts';
+
+function computeBufferHash(buffer: Buffer): string {
+  let hash = 0;
+  for (let i = 0; i < buffer.length; i++) {
+    hash = ((hash << 5) - hash) + buffer[i];
+    hash |= 0;
+  }
+  return Math.abs(hash).toString(16) + '_' + buffer.length.toString(16);
+}
 
 export interface UnpivotedRecord {
   store_code: string;
@@ -95,9 +103,8 @@ export async function parseMTDFile(
   filename: string,
   targetSalesMonth: string
 ): Promise<ParseResult> {
-  const hashSum = crypto.createHash('sha256');
-  hashSum.update(buffer);
-  const fileHash = hashSum.digest('hex');
+  const fileHash = computeBufferHash(buffer);
+
 
   const { reportDate, salesMonth: extractedMonth } = extractDateFromFilename(filename);
 

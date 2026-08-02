@@ -2,8 +2,11 @@
 node_modules/
 .venv/
 
-# Next.js build output
+# Next.js & OpenNext build output
 .next/
+.open-next/
+.vercel/
+.wrangler/
 out/
 
 # Local databases & storage
@@ -19,4 +22,3 @@ r2_storage/
 # Environment
 .env
 .env.local
-.github/workflows/

@@ -37,15 +37,10 @@ CREATE TABLE IF NOT EXISTS dim_models (
     remark TEXT
 );
 
--- Add dimension columns to sales_mtd_data table if not present
-ALTER TABLE sales_mtd_data ADD COLUMN province TEXT;
-ALTER TABLE sales_mtd_data ADD COLUMN region TEXT;
-ALTER TABLE sales_mtd_data ADD COLUMN store_type TEXT;
-ALTER TABLE sales_mtd_data ADD COLUMN channel TEXT;
-ALTER TABLE sales_mtd_data ADD COLUMN store_size TEXT;
-ALTER TABLE sales_mtd_data ADD COLUMN top_store TEXT;
-ALTER TABLE sales_mtd_data ADD COLUMN model TEXT;
-ALTER TABLE sales_mtd_data ADD COLUMN sku_name TEXT;
-ALTER TABLE sales_mtd_data ADD COLUMN chk_cat TEXT;
-ALTER TABLE sales_mtd_data ADD COLUMN chk_sub_cat TEXT;
-ALTER TABLE sales_mtd_data ADD COLUMN size TEXT;
+CREATE TABLE IF NOT EXISTS dim_categories (
+    chk_cat TEXT PRIMARY KEY,
+    category_name TEXT,
+    department TEXT,
+    manager TEXT,
+    remark TEXT
+);

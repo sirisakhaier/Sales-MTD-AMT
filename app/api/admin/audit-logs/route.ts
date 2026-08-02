@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
-import db from '@/lib/db';
+import { getDB, dbAll } from '@/lib/d1';
 
 export async function GET() {
   try {
-    const logs = db.prepare('SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT 200').all();
+    const db = await getDB();
+    const logs = await dbAll(db, 'SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT 200');
     return NextResponse.json({ logs });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });

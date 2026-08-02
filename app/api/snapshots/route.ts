@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server';
-import db from '@/lib/db';
+import { getDB, dbGet, dbAll, dbRun } from '@/lib/d1';
 
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const month = searchParams.get('month') || '2026-06';
+    const db = await getDB();
 
-    const snapshots = db.prepare(`
+    const snapshots = await dbAll(db, `
       SELECT 
         f.id,
         f.sales_month_id as sales_month,
@@ -21,7 +22,7 @@ export async function GET(request: Request) {
       FROM import_files f
       WHERE f.sales_month_id = ? AND f.status = 'COMPLETED'
       ORDER BY f.mtd_report_date ASC
-    `).all(month);
+    `, month);
 
     return NextResponse.json({ snapshots });
   } catch (error: any) {
@@ -39,28 +40,20 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'Snapshot ID required' }, { status: 400 });
     }
 
-    const file = db.prepare('SELECT * FROM import_files WHERE id = ?').get(snapshotId) as any;
+    const db = await getDB();
+    const file = await dbGet(db, 'SELECT * FROM import_files WHERE id = ?', snapshotId);
     if (!file) {
       return NextResponse.json({ error: 'Snapshot file not found' }, { status: 404 });
     }
 
     const now = new Date().toISOString();
 
-    const deleteTransaction = db.transaction(() => {
-      const deletedData = db.prepare('DELETE FROM sales_mtd_data WHERE import_file_id = ?').run(snapshotId);
-      db.prepare('DELETE FROM import_files WHERE id = ?').run(snapshotId);
-
-      db.prepare(`
-        INSERT INTO audit_logs (id, user_email, action, entity_type, entity_id, description, created_at)
-        VALUES (?, ?, 'SNAPSHOT_DELETED', 'IMPORT_FILE', ?, ?, ?)
-      `).run(
-        `aud-${Date.now()}`, userEmail, snapshotId,
-        `Deleted MTD Snapshot ${file.mtd_report_date} (${file.source_filename}). Removed ${deletedData.changes} sales records.`,
-        now
-      );
-    });
-
-    deleteTransaction();
+    await dbRun(db, 'DELETE FROM sales_mtd_data WHERE import_file_id = ?', snapshotId);
+    await dbRun(db, 'DELETE FROM import_files WHERE id = ?', snapshotId);
+    await dbRun(db, `
+      INSERT INTO audit_logs (id, user_email, action, entity_type, entity_id, description, created_at)
+      VALUES (?, ?, 'SNAPSHOT_DELETED', 'IMPORT_FILE', ?, ?, ?)
+    `, `aud-${Date.now()}`, userEmail, snapshotId, `Deleted MTD Snapshot ${file.mtd_report_date} (${file.source_filename}).`, now);
 
     return NextResponse.json({
       success: true,

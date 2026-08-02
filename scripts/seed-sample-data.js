@@ -2,8 +2,8 @@ const fs = require('fs');
 const path = require('path');
 
 async function seed() {
-  const { parseMTDFile } = require('../lib/file-parser/parser');
-  const db = require('../lib/db').default;
+  const { parseMTDFile } = require('../lib/file-parser/parser.ts');
+  const db = require('../lib/db.ts').default;
 
   // Execute migration 0003_add_dimensions.sql
   const migration3Path = path.join(process.cwd(), 'migrations', '0003_add_dimensions.sql');

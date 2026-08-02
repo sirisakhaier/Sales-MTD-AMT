@@ -1,42 +1,40 @@
 import { NextResponse } from 'next/server';
-import db from '@/lib/db';
+import { getDB, dbGet, dbAll } from '@/lib/d1';
 
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const selectedMonth = searchParams.get('month') || '2026-06';
+    const db = await getDB();
 
-    // Get all sales months recorded
-    const salesMonths = db.prepare(`
+    const salesMonths = await dbAll<{ sales_month: string }>(db, `
       SELECT DISTINCT sales_month FROM sales_mtd_data ORDER BY sales_month DESC
-    `).all() as { sales_month: string }[];
+    `);
 
     const monthList = salesMonths.map(m => m.sales_month);
     if (!monthList.includes(selectedMonth)) {
       monthList.unshift(selectedMonth);
     }
 
-    // Get snapshot summary for selected month
-    const snapshotSummary = db.prepare(`
+    const snapshotSummary = await dbGet<any>(db, `
       SELECT 
         COUNT(DISTINCT import_file_id) as total_snapshots,
         MAX(mtd_report_date) as latest_mtd_date,
         COUNT(*) as total_records
       FROM sales_mtd_data
       WHERE sales_month = ?
-    `).get(selectedMonth) as any;
+    `, selectedMonth);
 
     let latestFile = null;
     if (snapshotSummary?.latest_mtd_date) {
-      latestFile = db.prepare(`
+      latestFile = await dbGet<any>(db, `
         SELECT source_filename FROM import_files 
         WHERE sales_month_id = ? AND mtd_report_date = ? AND status = 'COMPLETED'
         ORDER BY created_at DESC LIMIT 1
-      `).get(selectedMonth, snapshotSummary.latest_mtd_date) as any;
+      `, selectedMonth, snapshotSummary.latest_mtd_date);
     }
 
-    // Get historical snapshots list
-    const snapshots = db.prepare(`
+    const snapshots = await dbAll(db, `
       SELECT 
         id,
         mtd_report_date,
@@ -48,7 +46,7 @@ export async function GET(request: Request) {
       FROM import_files
       WHERE sales_month_id = ?
       ORDER BY mtd_report_date ASC
-    `).all(selectedMonth);
+    `, selectedMonth);
 
     return NextResponse.json({
       selectedMonth,

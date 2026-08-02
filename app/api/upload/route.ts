@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import db from '@/lib/db';
+import { getDB, dbGet, dbRun } from '@/lib/d1';
 import { parseMTDFile } from '@/lib/file-parser/parser';
 import { saveFileToR2 } from '@/lib/storage';
 
@@ -14,6 +14,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'No files uploaded' }, { status: 400 });
     }
 
+    const db = await getDB();
     const batchId = `batch-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     const now = new Date().toISOString();
 
@@ -27,36 +28,18 @@ export async function POST(request: Request) {
     const fileResults: any[] = [];
 
     // Ensure sales_months entry exists
-    const existingMonth = db.prepare('SELECT id FROM sales_months WHERE sales_month = ?').get(salesMonth);
+    const existingMonth = await dbGet(db, 'SELECT id FROM sales_months WHERE sales_month = ?', salesMonth);
     if (!existingMonth) {
       const monthParts = salesMonth.split('-');
       const year = parseInt(monthParts[0], 10);
       const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
       const monthName = monthNames[parseInt(monthParts[1], 10) - 1] + ' ' + year;
       
-      db.prepare(`
+      await dbRun(db, `
         INSERT INTO sales_months (id, sales_month, month_name, year, status, created_at, updated_at)
         VALUES (?, ?, ?, ?, 'ACTIVE', ?, ?)
-      `).run(`sm-${salesMonth}`, salesMonth, monthName, year, now, now);
+      `, `sm-${salesMonth}`, salesMonth, monthName, year, now, now);
     }
-
-    const insertDataStmt = db.prepare(`
-      INSERT INTO sales_mtd_data (
-        id, sales_month_id, import_file_id, import_batch_id, sales_month, mtd_report_date,
-        source_filename, store_code, store_name, product_code, product_name, sku,
-        category, brand, sales_units, sales_amount, created_at, updated_at,
-        province, region, store_type, channel, store_size, top_store, model, sku_name, chk_cat, chk_sub_cat, size
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    const insertFileStmt = db.prepare(`
-      INSERT INTO import_files (
-        id, batch_id, sales_month_id, mtd_report_date, source_filename, source_file_hash,
-        file_size, file_type, r2_object_key, total_source_rows, total_unpivot_rows,
-        total_selected_month_rows, new_records, duplicate_records, error_records,
-        status, uploaded_by, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
 
     for (const file of files) {
       const fileId = `file-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
@@ -72,7 +55,7 @@ export async function POST(request: Request) {
         totalSelectedMonthRows += parseRes.totalSelectedMonthRows;
 
         // Check SHA-256 duplicate file
-        const existingHash = db.prepare('SELECT id, source_filename FROM import_files WHERE source_file_hash = ?').get(parseRes.fileHash) as any;
+        const existingHash = await dbGet<any>(db, 'SELECT id, source_filename FROM import_files WHERE source_file_hash = ?', parseRes.fileHash);
         if (existingHash) {
           duplicateRecords += parseRes.totalSelectedMonthRows;
           fileResults.push({
@@ -82,7 +65,14 @@ export async function POST(request: Request) {
             records: 0
           });
 
-          insertFileStmt.run(
+          await dbRun(db, `
+            INSERT INTO import_files (
+              id, batch_id, sales_month_id, mtd_report_date, source_filename, source_file_hash,
+              file_size, file_type, r2_object_key, total_source_rows, total_unpivot_rows,
+              total_selected_month_rows, new_records, duplicate_records, error_records,
+              status, uploaded_by, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `,
             fileId, batchId, salesMonth, reportDate, file.name, parseRes.fileHash,
             file.size, file.type || 'xls', '', parseRes.totalSourceRows,
             parseRes.totalUnpivotRows, parseRes.totalSelectedMonthRows, 0,
@@ -100,25 +90,43 @@ export async function POST(request: Request) {
           file.name
         );
 
-        // Insert unpivoted & joined records in transaction
-        const transaction = db.transaction((records: typeof parseRes.unpivotedRecords) => {
-          for (let i = 0; i < records.length; i++) {
-            const r = records[i];
-            const rowId = `rec-${fileId}-${i}`;
-            insertDataStmt.run(
+        // Insert unpivoted & joined records in D1 batch chunks
+        const records = parseRes.unpivotedRecords;
+        const insertSql = `
+          INSERT INTO sales_mtd_data (
+            id, sales_month_id, import_file_id, import_batch_id, sales_month, mtd_report_date,
+            source_filename, store_code, store_name, product_code, product_name, sku,
+            category, brand, sales_units, sales_amount, created_at, updated_at,
+            province, region, store_type, channel, store_size, top_store, model, sku_name, chk_cat, chk_sub_cat, size
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `;
+
+        const chunkSize = 50;
+        for (let i = 0; i < records.length; i += chunkSize) {
+          const chunk = records.slice(i, i + chunkSize);
+          const stmts = chunk.map((r, idx) => {
+            const rowId = `rec-${fileId}-${i + idx}`;
+            return db.prepare(insertSql).bind(
               rowId, salesMonth, fileId, batchId, salesMonth, reportDate,
               file.name, r.store_code, r.store_name, r.product_code, r.product_name,
               r.sku, r.category, r.brand, r.sales_units, r.sales_amount, now, now,
               r.province, r.region, r.store_type, r.channel, r.store_size, r.top_store,
               r.model, r.product_name, r.chk_cat, r.chk_sub_cat, r.size
             );
-          }
-        });
+          });
+          await db.batch(stmts);
+        }
 
-        transaction(parseRes.unpivotedRecords);
         newRecords += parseRes.totalSelectedMonthRows;
 
-        insertFileStmt.run(
+        await dbRun(db, `
+          INSERT INTO import_files (
+            id, batch_id, sales_month_id, mtd_report_date, source_filename, source_file_hash,
+            file_size, file_type, r2_object_key, total_source_rows, total_unpivot_rows,
+            total_selected_month_rows, new_records, duplicate_records, error_records,
+            status, uploaded_by, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
           fileId, batchId, salesMonth, reportDate, file.name, parseRes.fileHash,
           file.size, file.type || 'xls', r2Key, parseRes.totalSourceRows,
           parseRes.totalUnpivotRows, parseRes.totalSelectedMonthRows,
@@ -144,22 +152,22 @@ export async function POST(request: Request) {
       }
     }
 
-    db.prepare(`
+    await dbRun(db, `
       INSERT INTO import_batches (
         id, sales_month_id, batch_name, uploaded_by, total_files, total_source_rows,
         total_unpivot_rows, total_selected_month_rows, new_records, duplicate_records,
         error_records, status, created_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'COMPLETED', ?)
-    `).run(
+    `,
       batchId, salesMonth, `Batch Upload ${now.substring(0, 10)}`, userEmail,
       files.length, totalSourceRows, totalUnpivotRows, totalSelectedMonthRows,
       newRecords, duplicateRecords, errorRecords, now
     );
 
-    db.prepare(`
+    await dbRun(db, `
       INSERT INTO audit_logs (id, user_email, action, entity_type, entity_id, description, created_at)
       VALUES (?, ?, 'FILE_UPLOAD', 'IMPORT_BATCH', ?, ?, ?)
-    `).run(
+    `,
       `aud-${Date.now()}`, userEmail, batchId,
       `Uploaded ${files.length} file(s) for ${salesMonth}. Joined with Store and Model dimension data. Imported ${newRecords} records.`,
       now

@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
-import db from '@/lib/db';
+import { getDB, dbGet, dbAll, dbRun } from '@/lib/d1';
 import { hashPassword } from '@/lib/auth';
 
 export async function GET() {
   try {
-    const users = db.prepare('SELECT id, username, email, full_name, role, is_active, created_at, updated_at, last_login_at FROM users ORDER BY created_at DESC').all();
+    const db = await getDB();
+    const users = await dbAll(db, 'SELECT id, username, email, full_name, role, is_active, created_at, updated_at, last_login_at FROM users ORDER BY created_at DESC');
     return NextResponse.json({ users });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -20,12 +21,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Username, email, role, and password are required' }, { status: 400 });
     }
 
-    const existingEmail = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+    const db = await getDB();
+    const existingEmail = await dbGet(db, 'SELECT id FROM users WHERE email = ?', email);
     if (existingEmail) {
       return NextResponse.json({ error: 'User with this email already exists' }, { status: 400 });
     }
 
-    const existingUsername = db.prepare('SELECT id FROM users WHERE username = ?').get(username);
+    const existingUsername = await dbGet(db, 'SELECT id FROM users WHERE username = ?', username);
     if (existingUsername) {
       return NextResponse.json({ error: 'User with this username already exists' }, { status: 400 });
     }
@@ -34,15 +36,15 @@ export async function POST(request: Request) {
     const passHash = hashPassword(password);
     const now = new Date().toISOString();
 
-    db.prepare(`
+    await dbRun(db, `
       INSERT INTO users (id, email, username, password_hash, full_name, role, is_active, created_at, updated_at, last_login_at)
       VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
-    `).run(userId, email, username, passHash, full_name || '', role, now, now, now);
+    `, userId, email, username, passHash, full_name || '', role, now, now, now);
 
-    db.prepare(`
+    await dbRun(db, `
       INSERT INTO audit_logs (id, user_email, action, entity_type, entity_id, description, created_at)
       VALUES (?, ?, 'USER_CREATED', 'USER', ?, ?, ?)
-    `).run(`aud-${Date.now()}`, adminEmail || 'admin@makro.co.th', userId, `Created user ${username} (${email}) with role ${role}`, now);
+    `, `aud-${Date.now()}`, adminEmail || 'admin@makro.co.th', userId, `Created user ${username} (${email}) with role ${role}`, now);
 
     return NextResponse.json({ success: true, userId });
   } catch (error: any) {
@@ -55,22 +57,21 @@ export async function PUT(request: Request) {
     const body = await request.json();
     const { id, username, email, full_name, role, is_active, password, adminEmail } = body;
 
-    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(id) as any;
+    const db = await getDB();
+    const user = await dbGet(db, 'SELECT * FROM users WHERE id = ?', id);
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    // Check unique username if changing
     if (username && username !== user.username) {
-      const dup = db.prepare('SELECT id FROM users WHERE username = ? AND id != ?').get(username, id);
+      const dup = await dbGet(db, 'SELECT id FROM users WHERE username = ? AND id != ?', username, id);
       if (dup) {
         return NextResponse.json({ error: 'Username already taken by another user' }, { status: 400 });
       }
     }
 
-    // Check unique email if changing
     if (email && email !== user.email) {
-      const dup = db.prepare('SELECT id FROM users WHERE email = ? AND id != ?').get(email, id);
+      const dup = await dbGet(db, 'SELECT id FROM users WHERE email = ? AND id != ?', email, id);
       if (dup) {
         return NextResponse.json({ error: 'Email already taken by another user' }, { status: 400 });
       }
@@ -94,16 +95,13 @@ export async function PUT(request: Request) {
     sql += ' WHERE id = ?';
     params.push(id);
 
-    db.prepare(sql).run(...params);
+    await dbRun(db, sql, ...params);
 
-    db.prepare(`
+    await dbRun(db, `
       INSERT INTO audit_logs (id, user_email, action, entity_type, entity_id, description, created_at)
       VALUES (?, ?, 'USER_UPDATED', 'USER', ?, ?, ?)
-    `).run(
-      `aud-${Date.now()}`, adminEmail || 'admin@makro.co.th', id,
-      `Updated user ${newUsername} (${newEmail}) [Role: ${newRole}, Active: ${newStatus}${password ? ', Password Changed' : ''}]`,
-      now
-    );
+    `, `aud-${Date.now()}`, adminEmail || 'admin@makro.co.th', id,
+      `Updated user ${newUsername} (${newEmail}) [Role: ${newRole}, Active: ${newStatus}${password ? ', Password Changed' : ''}]`, now);
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
@@ -121,18 +119,19 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
     }
 
-    const user = db.prepare('SELECT username, email FROM users WHERE id = ?').get(id) as any;
+    const db = await getDB();
+    const user = await dbGet(db, 'SELECT username, email FROM users WHERE id = ?', id);
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    db.prepare('DELETE FROM users WHERE id = ?').run(id);
+    await dbRun(db, 'DELETE FROM users WHERE id = ?', id);
 
     const now = new Date().toISOString();
-    db.prepare(`
+    await dbRun(db, `
       INSERT INTO audit_logs (id, user_email, action, entity_type, entity_id, description, created_at)
       VALUES (?, ?, 'USER_DELETED', 'USER', ?, ?, ?)
-    `).run(`aud-${Date.now()}`, adminEmail, id, `Deleted user ${user.username} (${user.email})`, now);
+    `, `aud-${Date.now()}`, adminEmail, id, `Deleted user ${user.username} (${user.email})`, now);
 
     return NextResponse.json({ success: true });
   } catch (error: any) {

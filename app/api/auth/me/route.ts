@@ -1,12 +1,11 @@
 import { NextResponse } from 'next/server';
-import db from '@/lib/db';
+import { getDB, dbGet } from '@/lib/d1';
 
 export async function GET(request: Request) {
   try {
     const cfEmail = request.headers.get('CF-Access-Authenticated-User-Email');
     let userEmail = cfEmail || 'admin@makro.co.th';
 
-    // Allow switching mock user via header or query param for dev testing
     const url = new URL(request.url);
     const mockRole = url.searchParams.get('role');
     if (mockRole) {
@@ -15,7 +14,8 @@ export async function GET(request: Request) {
       else if (mockRole === 'ADMIN') userEmail = 'admin@makro.co.th';
     }
 
-    const user = db.prepare('SELECT * FROM users WHERE email = ? AND is_active = 1').get(userEmail) as any;
+    const db = await getDB();
+    const user = await dbGet(db, 'SELECT * FROM users WHERE email = ? AND is_active = 1', userEmail);
 
     if (!user) {
       return NextResponse.json({
